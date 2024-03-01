@@ -1,0 +1,162 @@
+`timescale 1ns / 1ps
+`default_nettype none
+
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date:    09:49:13 07/15/2016 
+// Design Name: 
+// Module Name:    step_template 
+// Project Name: 
+// Target Devices: 
+// Tool versions: 
+// Description: 
+//
+// Dependencies: 
+//
+// Revision: 
+// Revision 0.01 - File Created
+// Additional Comments: 
+//
+//////////////////////////////////////////////////////////////////////////////////
+module stereo(
+    input  wire clk,
+    input  wire rst,	 
+	 
+// ==================================================
+// 576 lines
+// --------------------------------------------------	 
+
+	 output reg   [9:0] granule_ch0_read_addr,
+	 input  wire [17:0] granule_ch0_read_data,
+	 output reg         granule_ch0_write_enable,
+	 output reg   [9:0] granule_ch0_write_addr, 
+	 output wire  [17:0] granule_ch0_write_data,	 
+
+	 output reg   [9:0] granule_ch1_read_addr,
+	 input  wire [17:0] granule_ch1_read_data,
+	 output reg         granule_ch1_write_enable,
+	 output reg   [9:0] granule_ch1_write_addr,
+	 output wire  [17:0] granule_ch1_write_data,
+	 
+// ==================================================
+// header information
+// --------------------------------------------------	  
+	 
+	 input  wire  [1:0] header_sampling_frequency,
+	 input  wire  [1:0] header_mode,
+	 input  wire  [1:0] header_mode_extension,
+	 
+// ==================================================
+// stage signaling
+// --------------------------------------------------	
+	 
+    input  wire        stage_ready,
+    output reg         stage_done
+    );
+	 
+	// constant
+	localparam [17:0] ONE_DIV_SQRT2 = 18'h0B504;
+	
+	//datapath
+	wire[17:0] add_out;
+	wire[17:0] sub_out;
+	wire[17:0] mul_0_out;
+	wire[17:0] mul_1_out;
+	reg stereo_mode; // 0 = stereo, 1 = joint_stereo
+	
+	arith18_add add(.op1(granule_ch0_read_data), .op2(granule_ch1_read_data), .sum(add_out));
+	arith18_sub sub(.op1(granule_ch0_read_data), .op2(granule_ch1_read_data), .difference(sub_out));
+	arith18_mul mul_0(.op1(ONE_DIV_SQRT2), .op2(add_out), .product(mul_0_out));
+	arith18_mul mul_1(.op1(ONE_DIV_SQRT2), .op2(sub_out), .product(mul_1_out));
+	multiplexer_2 mux0(.muxin(stereo_mode), .a(granule_ch0_read_data), .b(mul_0_out), .out(granule_ch0_write_data));
+	multiplexer_2 mux1(.muxin(stereo_mode), .a(granule_ch1_read_data), .b(mul_1_out), .out(granule_ch1_write_data));
+	
+	//FSM
+	
+	localparam [1:0]
+	   idle = 2'b00,
+	   stereo = 2'b01,
+	   joint_stereo = 2'b10;
+	
+	reg[1:0] state;
+	reg[1:0] nextstate;
+	reg [9:0] counter;
+	
+	
+    always @(posedge clk) begin
+        if(rst) begin
+            state <= idle;
+            counter <= 0;
+        end 
+        else begin
+        if(counter <= 576) begin
+            if(state != idle) begin
+                counter <= counter + 1;
+            end
+            stage_done <= 0;
+        end else begin
+            counter <= 0;
+            stage_done <= 1;
+        end
+            state <= nextstate;
+        end
+    end
+    
+    always @(*) begin
+        nextstate = idle;
+        
+        case(state)
+            idle: begin
+                if(stage_ready && header_mode == 2'b01) begin
+                    nextstate = joint_stereo;
+                end
+                else if(stage_ready) begin
+                    nextstate = stereo;
+                end
+            end
+            
+            stereo: begin
+                if(counter <= 576) begin
+                    nextstate = stereo;
+                end
+            end
+            
+            joint_stereo: begin
+                if(counter <= 576) begin
+                    nextstate = joint_stereo;
+                end
+            end
+        endcase
+    end
+    
+    always @(*) begin
+        granule_ch0_write_enable = 0;
+        granule_ch1_write_enable = 0;
+        stereo_mode = 0;
+        granule_ch0_read_addr = counter;
+        if(counter == 0) begin
+            granule_ch0_write_addr = 0;
+            granule_ch1_write_addr = 0;
+        end else begin
+            granule_ch0_write_addr = counter - 1;
+            granule_ch1_write_addr = counter - 1;
+        end
+        granule_ch1_read_addr = counter;
+        case(state)
+        stereo: begin
+            granule_ch0_write_enable = 1;
+            granule_ch1_write_enable = 1;
+            stereo_mode = 0;
+        end
+        
+        joint_stereo: begin
+            granule_ch0_write_enable = 1;
+            granule_ch1_write_enable = 1;
+            stereo_mode = 1;
+        end
+        endcase
+    end
+	
+endmodule

@@ -1,0 +1,12 @@
+// word width: 18 bits
+// alias reduction ca - fixpoint
+// 8 valid entries
+// address: [2:0| i]
+37c4a // -0.514496
+3873f // -0.471695
+3afc6 // -0.313385
+3d170 // -0.181885
+3e7c9 // -0.094589
+3f582 // -0.040985
+3fc5e // -0.014191
+3ff0e // -0.003693
